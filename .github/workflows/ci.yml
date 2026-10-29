@@ -10,6 +10,12 @@ env:
   IMAGE: repo.magiccreative.ai/demo-devops-docker-hosted/igs-cicd-internal/unify-java-svc
 
 # No `name:` on jobs: Unify run details/evidence don't display correctly with job names set.
+#
+# The CloudBees steps use local copies in .github/actions/ instead of cloudbees-io-gha/*.
+# The upstream images live on public.ecr.aws and fail on GitHub-hosted runners with
+# "Data limit exceeded" (AWS anonymous pull cap). The local copies use the same images,
+# mirrored to Nexus by digest. Local actions are pulled when the step runs, so the Nexus
+# login step must come before them (and checkout before that).
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -18,6 +24,12 @@ jobs:
       version: ${{ steps.ver.outputs.version }}
     steps:
       - uses: actions/checkout@v4
+
+      - uses: docker/login-action@v3
+        with:
+          registry: repo.magiccreative.ai
+          username: ${{ secrets.NEXUS_USERNAME }}
+          password: ${{ secrets.NEXUS_PASSWORD }}
 
       - uses: actions/setup-java@v4
         with:
@@ -32,16 +44,10 @@ jobs:
 
       - name: Publish test results to Unify
         if: always()
-        uses: cloudbees-io-gha/publish-test-results@v2
+        uses: ./.github/actions/publish-test-results
         with:
           test-type: junit
           results-path: target/surefire-reports
-
-      - uses: docker/login-action@v3
-        with:
-          registry: repo.magiccreative.ai
-          username: ${{ secrets.NEXUS_USERNAME }}
-          password: ${{ secrets.NEXUS_PASSWORD }}
 
       - id: push
         uses: docker/build-push-action@v6
@@ -52,7 +58,7 @@ jobs:
 
       - name: Register build artifact
         id: register
-        uses: cloudbees-io-gha/register-build-artifact@v3
+        uses: ./.github/actions/register-build-artifact
         with:
           name: unify-java-svc
           version: ${{ steps.ver.outputs.version }}
@@ -65,8 +71,14 @@ jobs:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with:
+          registry: repo.magiccreative.ai
+          username: ${{ secrets.NEXUS_USERNAME }}
+          password: ${{ secrets.NEXUS_PASSWORD }}
       - run: echo "Deploy ${{ needs.build.outputs.version }} to staging"
-      - uses: cloudbees-io-gha/register-deployed-artifact@v1
+      - uses: ./.github/actions/register-deployed-artifact
         with:
           artifact-id: ${{ needs.build.outputs.artifact-id }}
           target-environment: staging
@@ -76,8 +88,14 @@ jobs:
     runs-on: ubuntu-latest
     environment: production       # GitHub required reviewers pause the job here
     steps:
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with:
+          registry: repo.magiccreative.ai
+          username: ${{ secrets.NEXUS_USERNAME }}
+          password: ${{ secrets.NEXUS_PASSWORD }}
       - run: echo "Deploy ${{ needs.build.outputs.version }} to production"
-      - uses: cloudbees-io-gha/register-deployed-artifact@v1
+      - uses: ./.github/actions/register-deployed-artifact
         with:
           artifact-id: ${{ needs.build.outputs.artifact-id }}
           target-environment: production

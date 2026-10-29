@@ -1,0 +1,26 @@
+# Local copy of cloudbees-io-gha/publish-test-results@v2.
+# The only change is the image location: the upstream image on public.ecr.aws hits AWS's
+# anonymous "Data limit exceeded" cap on GitHub-hosted runners, so it is mirrored to Nexus
+# (same digest). Run docker/login-action for repo.magiccreative.ai before this step.
+name: 'Publish test results to Unify'
+description: 'Publish test results from external tools to CloudBees Unify.'
+
+inputs:
+  cloudbees-url:
+    description: 'The CloudBees Unify URL.'
+    required: false
+    default: "https://api.cloudbees.io"
+  test-type:
+    description: 'Test Type indicating testing tool report that needs conversion.'
+    required: true
+  results-path:
+    description: 'Folder name/File path for the location of the test reports.'
+    required: true
+
+runs:
+  using: "docker"
+  image: "docker://repo.magiccreative.ai/demo-devops-docker-hosted/cloudbees-io-gha/gha-publish-test-results@sha256:c68b48bccf90b04d49439c09482d2d85814d7019ea2f05f7022070ee4027c9d9"
+  env:
+    CLOUDBEES_API_URL: ${{ inputs.cloudbees-url }}
+    TEST_TYPE: ${{ inputs.test-type }}
+    FOLDER_PATH: ${{ inputs.results-path }}
