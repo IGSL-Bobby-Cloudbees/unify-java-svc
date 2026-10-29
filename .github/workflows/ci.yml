@@ -1,0 +1,81 @@
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  id-token: write     # REQUIRED: CloudBees actions authenticate with GitHub OIDC
+  contents: read
+  packages: write
+
+# No `name:` on jobs: Unify run details/evidence don't display correctly with job names set.
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      artifact-id: ${{ steps.register.outputs.cbp_artifact_id }}
+      version: ${{ steps.ver.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      - id: ver
+        run: echo "version=1.0.${{ github.run_number }}" >> "$GITHUB_OUTPUT"
+
+      - run: mvn -B verify
+
+      - name: Publish test results to Unify
+        if: always()
+        uses: cloudbees-io-gha/publish-test-results@v2
+        with:
+          test-type: junit
+          results-path: target/surefire-reports
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ghcr.io/igs-cicd-internal/unify-java-svc:${{ steps.ver.outputs.version }}
+
+      - name: Register build artifact
+        id: register
+        uses: cloudbees-io-gha/register-build-artifact@v3
+        with:
+          name: unify-java-svc
+          version: ${{ steps.ver.outputs.version }}
+          url: ghcr.io/igs-cicd-internal/unify-java-svc:${{ steps.ver.outputs.version }}
+          digest: ${{ steps.push.outputs.digest }}
+          type: docker
+
+  deploy-staging:
+    needs: build
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "Deploy ${{ needs.build.outputs.version }} to staging"
+      - uses: cloudbees-io-gha/register-deployed-artifact@v1
+        with:
+          artifact-id: ${{ needs.build.outputs.artifact-id }}
+          target-environment: staging
+
+  deploy-production:
+    needs: [build, deploy-staging]
+    runs-on: ubuntu-latest
+    environment: production       # GitHub required reviewers pause the job here
+    steps:
+      - run: echo "Deploy ${{ needs.build.outputs.version }} to production"
+      - uses: cloudbees-io-gha/register-deployed-artifact@v1
+        with:
+          artifact-id: ${{ needs.build.outputs.artifact-id }}
+          target-environment: production
