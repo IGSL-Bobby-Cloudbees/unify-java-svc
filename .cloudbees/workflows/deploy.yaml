@@ -1,0 +1,46 @@
+apiVersion: automation.cloudbees.io/v1alpha1
+kind: workflow
+name: deploy
+
+# Called by the application's deployer workflow (repo unify-cert-app) for one environment.
+on:
+  workflow_call:
+    inputs:
+      artifact-id:
+        type: string
+        required: true
+      environment:
+        type: string
+        required: true
+
+jobs:
+  deploy:
+    environment: ${{ inputs.environment }}
+    steps:
+      - name: Look up artifact
+        id: art
+        uses: cloudbees-io/get-artifact-details@v1
+        with:
+          artifact-id: ${{ inputs.artifact-id }}
+
+      - name: Deploy (Option A - simulated)
+        uses: docker://alpine:3.20
+        run: |
+          echo "Deploying ${{ steps.art.outputs.name }} ${{ steps.art.outputs.version }}"
+          echo "Image: ${{ steps.art.outputs.url }} -> ${{ inputs.environment }}"
+
+      # Option B - replace the step above with:
+      # - name: Deploy to EKS
+      #   uses: docker://bitnami/kubectl:1.31
+      #   env:
+      #     KUBECONFIG_DATA: ${{ secrets.KUBECONFIG }}
+      #   run: |
+      #     printf '%s' "$KUBECONFIG_DATA" > /tmp/kc && export KUBECONFIG=/tmp/kc
+      #     kubectl set image deployment/app app=${{ steps.art.outputs.url }}
+      #     kubectl rollout status deployment/app --timeout=120s
+
+      - name: Register deployed artifact
+        uses: cloudbees-io/register-deployed-artifact@v2
+        with:
+          artifact-id: ${{ inputs.artifact-id }}
+          target-environment: ${{ inputs.environment }}
