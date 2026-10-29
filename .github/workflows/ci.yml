@@ -5,7 +5,9 @@ on:
 permissions:
   id-token: write     # REQUIRED: CloudBees actions authenticate with GitHub OIDC
   contents: read
-  packages: write
+
+env:
+  IMAGE: repo.magiccreative.ai/demo-devops-docker-hosted/igs-cicd-internal/unify-java-svc
 
 # No `name:` on jobs: Unify run details/evidence don't display correctly with job names set.
 jobs:
@@ -37,16 +39,16 @@ jobs:
 
       - uses: docker/login-action@v3
         with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          registry: repo.magiccreative.ai
+          username: ${{ secrets.NEXUS_USERNAME }}
+          password: ${{ secrets.NEXUS_PASSWORD }}
 
       - id: push
         uses: docker/build-push-action@v6
         with:
           context: .
           push: true
-          tags: ghcr.io/igs-cicd-internal/unify-java-svc:${{ steps.ver.outputs.version }}
+          tags: ${{ env.IMAGE }}:${{ steps.ver.outputs.version }}
 
       - name: Register build artifact
         id: register
@@ -54,7 +56,7 @@ jobs:
         with:
           name: unify-java-svc
           version: ${{ steps.ver.outputs.version }}
-          url: ghcr.io/igs-cicd-internal/unify-java-svc:${{ steps.ver.outputs.version }}
+          url: ${{ env.IMAGE }}:${{ steps.ver.outputs.version }}
           digest: ${{ steps.push.outputs.digest }}
           type: docker
 
