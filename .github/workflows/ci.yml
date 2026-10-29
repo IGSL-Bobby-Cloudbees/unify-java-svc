@@ -8,6 +8,7 @@ permissions:
 
 env:
   IMAGE: repo.magiccreative.ai/demo-devops-docker-hosted/igs-cicd-internal/unify-java-svc
+  CB_IMAGES: repo.magiccreative.ai/demo-devops-docker-hosted/cloudbees-io-gha
 
 # No `name:` on jobs: Unify run details/evidence don't display correctly with job names set.
 #
@@ -30,6 +31,14 @@ jobs:
           registry: repo.magiccreative.ai
           username: ${{ secrets.NEXUS_USERNAME }}
           password: ${{ secrets.NEXUS_PASSWORD }}
+
+      # Pre-pull the mirrored CloudBees action images with the logged-in docker CLI.
+      # The runner's implicit pull inside `docker run` doesn't send the Nexus credentials
+      # ("no basic auth credentials"); once the image is local, no pull is needed.
+      - name: Pre-pull CloudBees action images
+        run: |
+          docker pull "$CB_IMAGES/gha-publish-test-results@sha256:c68b48bccf90b04d49439c09482d2d85814d7019ea2f05f7022070ee4027c9d9"
+          docker pull "$CB_IMAGES/gha-register-build-artifact@sha256:4c733173f62ee61c63b593746faeb6aceda738532cb225329870433df979e6f7"
 
       - uses: actions/setup-java@v4
         with:
@@ -77,6 +86,7 @@ jobs:
           registry: repo.magiccreative.ai
           username: ${{ secrets.NEXUS_USERNAME }}
           password: ${{ secrets.NEXUS_PASSWORD }}
+      - run: docker pull "$CB_IMAGES/gha-register-deployed-artifact@sha256:c940c94624b7bd76c674efb434758c6433529c0d15939c647029ed8a17d9db25"
       - run: echo "Deploy ${{ needs.build.outputs.version }} to staging"
       - uses: ./.github/actions/register-deployed-artifact
         with:
@@ -94,6 +104,7 @@ jobs:
           registry: repo.magiccreative.ai
           username: ${{ secrets.NEXUS_USERNAME }}
           password: ${{ secrets.NEXUS_PASSWORD }}
+      - run: docker pull "$CB_IMAGES/gha-register-deployed-artifact@sha256:c940c94624b7bd76c674efb434758c6433529c0d15939c647029ed8a17d9db25"
       - run: echo "Deploy ${{ needs.build.outputs.version }} to production"
       - uses: ./.github/actions/register-deployed-artifact
         with:
