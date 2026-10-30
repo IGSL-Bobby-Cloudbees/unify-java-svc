@@ -75,6 +75,18 @@ jobs:
           digest: ${{ steps.push.outputs.digest }}
           type: docker
 
+      # Container scan of the pushed image; findings go to the component's security
+      # center and Analytics -> Security insights.
+      - name: Export image for scanning
+        run: |
+          docker pull "$IMAGE:${{ steps.ver.outputs.version }}"
+          docker save -o "$GITHUB_WORKSPACE/unify-java-svc.tar" "$IMAGE:${{ steps.ver.outputs.version }}"
+
+      - name: Trivy scan and publish to Unify
+        uses: ./.github/actions/trivy-scan-publish
+        with:
+          binary-tar-path: ${{ github.workspace }}/unify-java-svc.tar
+
 # Build-only: deployments of unify-java-svc are done and recorded by Unify release
 # orchestration (.cloudbees/workflows/deploy.yaml, called by the unify-cert-app deployer).
 # Registering deployments here as well would double-count them in DORA metrics.

@@ -1,0 +1,121 @@
+# Local copy of cloudbees-io-gha/trivy-scan-publish@v2.
+# The only change is the image locations: the upstream images on public.ecr.aws hit AWS's
+# anonymous "Data limit exceeded" cap on GitHub-hosted runners, so they are mirrored to
+# Nexus (same digests). The steps call `docker run` from the shell, so the Nexus login
+# from docker/login-action applies; run that login before this action.
+name: 'Trivy scan and publish to Platform'
+description: 'Runs a Trivy scan in your GitHub Actions workflow and publishes the results to the CloudBees platform.'
+
+inputs:
+  cloudbees-url:
+    description: Cloudbees API URL
+    required: false
+    default: "https://api.cloudbees.io"
+  binary-tar-path:
+    description: 'Path to the binary to scan'
+    required: true
+  step-id:
+    description: GHA Step ID
+    required: false
+    default: ''
+  license:
+    description: 'Flag to enable license scanning (true/false)'
+    required: false
+    default: ''
+outputs:
+  critical-count:
+    description: A string containing the number of Critical security findings discovered during the scan.
+    value: ${{steps.process-outputs.outputs.critical-count}}
+  very-high-count:
+    description: A string containing the number of Very High security findings discovered during the scan.
+    value: ${{steps.process-outputs.outputs.very-high-count}}
+  high-count:
+    description: A string containing the number of High security findings discovered during the scan.
+    value: ${{steps.process-outputs.outputs.high-count}}
+  medium-count:
+    description: A string containing the number of Medium security findings discovered during the scan.
+    value: ${{steps.process-outputs.outputs.medium-count}}
+  low-count:
+    description: A string containing the number of Low security findings discovered during the scan.
+    value: ${{steps.process-outputs.outputs.low-count}}
+
+runs:
+  using: "composite"
+  steps:
+
+    - name: Create request JSON file in workspace
+      shell: bash
+      run: |
+        FILE_PATH="$GITHUB_WORKSPACE/store/request/request.json"
+        mkdir -p "$(dirname "$FILE_PATH")"
+        touch "$FILE_PATH"
+        echo "File created at: $FILE_PATH"
+
+    - name: Generate reference files
+      shell: bash
+      run: |
+        docker run --rm \
+          -v $GITHUB_WORKSPACE:$GITHUB_WORKSPACE \
+          -e INPUT_CLOUDBEES_API_URL="${{ inputs.cloudbees-url }}" \
+          -e INPUT_RUN_ID="${{ github.run_id }}" \
+          -e INPUT_IS_GITHUB_WORKFLOW="true" \
+          -e GITHUB_RUN_ID="${{ github.run_id }}" \
+          -e GITHUB_WORKFLOW_REF="${{ github.workflow_ref }}" \
+          -e GITHUB_RUN_ATTEMPT="${{ github.run_attempt }}" \
+          -e GITHUB_RUN_NUMBER="${{ github.run_number }}" \
+          -e GITHUB_REF_NAME="${{ github.ref_name }}" \
+          -e GITHUB_REPOSITORY="${{ github.repository }}" \
+          -e GITHUB_SERVER_URL="${{ github.server_url }}/${{ github.repository }}" \
+          -e GITHUB_JOB="${{ github.job }}" \
+          -e GITHUB_PROVIDER="GITHUB" \
+          -e GITHUB_WORKSPACE="$GITHUB_WORKSPACE" \
+          -v $GITHUB_OUTPUT:$GITHUB_OUTPUT \
+          -e GITHUB_OUTPUT="$GITHUB_OUTPUT" \
+          -e ACTIONS_ID_TOKEN_REQUEST_TOKEN=$ACTIONS_ID_TOKEN_REQUEST_TOKEN \
+          -e ACTIONS_ID_TOKEN_REQUEST_URL=$ACTIONS_ID_TOKEN_REQUEST_URL \
+          repo.magiccreative.ai/demo-devops-docker-hosted/cloudbees-io-gha/assets-plugin-chain-utils@sha256:b52d745e370ce2ae62dc213e856f41beb6d77e72b74d3de07e69842225c2ff07 \
+          generate-references --asset-type "BINARY" --tags "BINARY_CONTAINER" --binary-tar-path ${{ inputs.binary-tar-path }}
+
+    - name: Run trivy compliance plugin
+      shell: bash
+      run: |
+        CMD=(--mode single)
+        if [[ "${{ inputs.license }}" == "true" ]]; then
+          CMD+=( -license )
+        fi
+
+        docker run --rm \
+        -u root \
+        -v "$GITHUB_WORKSPACE:$GITHUB_WORKSPACE" \
+        -e GITHUB_WORKSPACE="$GITHUB_WORKSPACE" \
+        -e RUN_ID="${{ github.run_id }}" \
+        -e JOB_ID="${{ github.job }}" \
+        -e STEP_ID="${{ inputs.step-id }}" \
+        repo.magiccreative.ai/demo-devops-docker-hosted/cloudbees-io-gha/assets-trivy-scanner@sha256:45de7b39fa4efa36e8f2e65a32c4c1cf9509b3f3b0c383238a900a021750a262 \
+        "${CMD[@]}"
+
+    - id: process-outputs
+      name: Complete execution plan
+      shell: bash
+      run: |
+        docker run --rm \
+          -v $GITHUB_WORKSPACE:$GITHUB_WORKSPACE \
+          -e INPUT_CLOUDBEES_API_URL="${{ inputs.cloudbees-url }}" \
+          -e INPUT_RUN_ID="${{ github.run_id }}" \
+          -e INPUT_IS_GITHUB_WORKFLOW="true" \
+          -e GITHUB_RUN_ID="${{ github.run_id }}" \
+          -e GITHUB_WORKFLOW_REF="${{ github.workflow_ref }}" \
+          -e GITHUB_RUN_ATTEMPT="${{ github.run_attempt }}" \
+          -e GITHUB_RUN_NUMBER="${{ github.run_number }}" \
+          -e GITHUB_REF_NAME="${{ github.ref_name }}" \
+          -e GITHUB_REPOSITORY="${{ github.repository }}" \
+          -e GITHUB_SERVER_URL="${{ github.server_url }}/${{ github.repository }}" \
+          -e GITHUB_JOB="${{ github.job }}" \
+          -e GITHUB_PROVIDER="GITHUB" \
+          -e GITHUB_WORKSPACE="$GITHUB_WORKSPACE" \
+          -v $GITHUB_OUTPUT:$GITHUB_OUTPUT \
+          -e GITHUB_OUTPUT="$GITHUB_OUTPUT" \
+          -e ACTIONS_ID_TOKEN_REQUEST_TOKEN=$ACTIONS_ID_TOKEN_REQUEST_TOKEN \
+          -e ACTIONS_ID_TOKEN_REQUEST_URL=$ACTIONS_ID_TOKEN_REQUEST_URL \
+          repo.magiccreative.ai/demo-devops-docker-hosted/cloudbees-io-gha/assets-plugin-chain-utils@sha256:b52d745e370ce2ae62dc213e856f41beb6d77e72b74d3de07e69842225c2ff07 \
+          process-outputs
