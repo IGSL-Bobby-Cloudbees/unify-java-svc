@@ -87,6 +87,38 @@ jobs:
         with:
           binary-tar-path: ${{ github.workspace }}/unify-java-svc.tar
 
-# Build-only: deployments of unify-java-svc are done and recorded by Unify release
-# orchestration (.cloudbees/workflows/deploy.yaml, called by the unify-cert-app deployer).
-# Registering deployments here as well would double-count them in DORA metrics.
+  deploy-staging:
+    needs: build
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4          # needed before the local ./.github/actions
+      - uses: docker/login-action@v3
+        with:
+          registry: repo.magiccreative.ai
+          username: ${{ secrets.NEXUS_USERNAME }}
+          password: ${{ secrets.NEXUS_PASSWORD }}
+      - run: docker pull "$CB_IMAGES/gha-register-deployed-artifact@sha256:c940c94624b7bd76c674efb434758c6433529c0d15939c647029ed8a17d9db25"
+      - run: echo "Deploy ${{ needs.build.outputs.version }} to staging"
+      - uses: ./.github/actions/register-deployed-artifact
+        with:
+          artifact-id: ${{ needs.build.outputs.artifact-id }}
+          target-environment: staging
+
+  deploy-production:
+    needs: [build, deploy-staging]
+    runs-on: ubuntu-latest
+    environment: production       # GitHub required reviewers pause the job here
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with:
+          registry: repo.magiccreative.ai
+          username: ${{ secrets.NEXUS_USERNAME }}
+          password: ${{ secrets.NEXUS_PASSWORD }}
+      - run: docker pull "$CB_IMAGES/gha-register-deployed-artifact@sha256:c940c94624b7bd76c674efb434758c6433529c0d15939c647029ed8a17d9db25"
+      - run: echo "Deploy ${{ needs.build.outputs.version }} to production"
+      - uses: ./.github/actions/register-deployed-artifact
+        with:
+          artifact-id: ${{ needs.build.outputs.artifact-id }}
+          target-environment: production
